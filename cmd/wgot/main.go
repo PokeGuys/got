@@ -12,7 +12,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/melbahja/got"
+	"github.com/pokeguys/got"
 	"github.com/schollz/progressbar/v3"
 	"github.com/urfave/cli/v2"
 )

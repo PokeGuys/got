@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/melbahja/got"
+	"github.com/pokeguys/got"
 )
 
 var (
@@ -17,18 +17,15 @@ var (
 )
 
 func init() {
-
 	var err error
 
 	okFileStat, err = os.Stat("go.mod")
-
 	if err != nil {
 		panic(err)
 	}
 }
 
 func TestGetInfoAndInit(t *testing.T) {
-
 	t.Run("getInfoTest", getInfoTest)
 	t.Run("okInitTest", okInitTest)
 	t.Run("errInitTest", errInitTest)
@@ -36,7 +33,6 @@ func TestGetInfoAndInit(t *testing.T) {
 }
 
 func TestDownloading(t *testing.T) {
-
 	t.Run("downloadOkFileTest", downloadOkFileTest)
 	t.Run("downloadNotFoundTest", downloadNotFoundTest)
 	t.Run("downloadOkFileContentTest", downloadOkFileContentTest)
@@ -48,14 +44,12 @@ func TestDownloading(t *testing.T) {
 }
 
 func getInfoTest(t *testing.T) {
-
 	tmpFile := createTemp()
 	defer clean(tmpFile)
 
 	dl := got.NewDownload(context.Background(), httpt.URL+"/ok_file", tmpFile)
 
 	info, err := dl.GetInfoOrDownload()
-
 	if err != nil {
 		t.Error(err)
 		return
@@ -71,7 +65,6 @@ func getInfoTest(t *testing.T) {
 }
 
 func sendHeadersTest(t *testing.T) {
-
 	tmpFile := createTemp()
 	defer clean(tmpFile)
 
@@ -84,7 +77,6 @@ func sendHeadersTest(t *testing.T) {
 	}
 
 	info, err := dl.GetInfoOrDownload()
-
 	if err != nil {
 		t.Error(err)
 		return
@@ -100,7 +92,6 @@ func sendHeadersTest(t *testing.T) {
 }
 
 func getFilenameTest(t *testing.T) {
-
 	tmpDir := os.TempDir()
 	defer os.RemoveAll(tmpDir)
 
@@ -108,20 +99,16 @@ func getFilenameTest(t *testing.T) {
 	dl.Dir = tmpDir
 
 	_, err := dl.GetInfoOrDownload()
-
 	if err != nil {
-
 		t.Errorf("Unexpected error: " + err.Error())
 	}
 
 	if dl.Path() != filepath.Join(tmpDir, "go.mod") {
 		t.Errorf("Expecting file name to be: go.mod but got: " + filepath.Join(tmpDir, "go.mod"))
 	}
-
 }
 
 func okInitTest(t *testing.T) {
-
 	tmpFile := createTemp()
 	defer clean(tmpFile)
 
@@ -136,7 +123,6 @@ func okInitTest(t *testing.T) {
 }
 
 func errInitTest(t *testing.T) {
-
 	tmpFile := createTemp()
 	defer clean(tmpFile)
 
@@ -151,7 +137,6 @@ func errInitTest(t *testing.T) {
 }
 
 func downloadOkFileTest(t *testing.T) {
-
 	tmpFile := createTemp()
 	defer clean(tmpFile)
 
@@ -177,7 +162,6 @@ func downloadOkFileTest(t *testing.T) {
 	}
 
 	stat, err := os.Stat(tmpFile)
-
 	if err != nil {
 		t.Error(err)
 	}
@@ -188,7 +172,6 @@ func downloadOkFileTest(t *testing.T) {
 }
 
 func downloadNotFoundTest(t *testing.T) {
-
 	tmpFile := createTemp()
 	defer clean(tmpFile)
 
@@ -206,7 +189,6 @@ func downloadNotFoundTest(t *testing.T) {
 }
 
 func downloadOkFileContentTest(t *testing.T) {
-
 	tmpFile := createTemp()
 	defer clean(tmpFile)
 
@@ -227,14 +209,12 @@ func downloadOkFileContentTest(t *testing.T) {
 	}
 
 	mod, err := ioutil.ReadFile("go.mod")
-
 	if err != nil {
 		t.Error(err)
 		return
 	}
 
 	dlFile, err := ioutil.ReadFile(tmpFile)
-
 	if err != nil {
 		t.Error(err)
 		return
@@ -246,11 +226,9 @@ func downloadOkFileContentTest(t *testing.T) {
 		fmt.Println("b", string(dlFile))
 		t.Error("Corrupted file")
 	}
-
 }
 
 func downloadTimeoutContextTest(t *testing.T) {
-
 	tmpFile, _ := ioutil.TempDir("", "")
 	defer clean(tmpFile)
 
@@ -280,7 +258,6 @@ func downloadTimeoutContextTest(t *testing.T) {
 }
 
 func downloadHeadNotSupported(t *testing.T) {
-
 	tmpFile := createTemp()
 	defer clean(tmpFile)
 
@@ -314,7 +291,6 @@ func downloadHeadNotSupported(t *testing.T) {
 }
 
 func downloadPartialContentNotSupportedTest(t *testing.T) {
-
 	tmpFile := createTemp()
 	defer clean(tmpFile)
 
@@ -337,7 +313,6 @@ func downloadPartialContentNotSupportedTest(t *testing.T) {
 	}
 
 	stat, err := os.Stat(tmpFile)
-
 	if err != nil {
 		t.Error(err)
 	}
@@ -348,7 +323,6 @@ func downloadPartialContentNotSupportedTest(t *testing.T) {
 }
 
 func coverTests(t *testing.T) {
-
 	// Just for testing
 	destPath := createTemp()
 	defer clean(destPath)
@@ -377,7 +351,6 @@ func coverTests(t *testing.T) {
 }
 
 func ExampleDownload() {
-
 	// Just for testing
 	destPath := createTemp()
 	defer clean(destPath)
@@ -402,9 +375,7 @@ func ExampleDownload() {
 }
 
 func createTemp() string {
-
 	tmp, err := ioutil.TempFile("", "")
-
 	if err != nil {
 		panic(err)
 	}
@@ -415,6 +386,5 @@ func createTemp() string {
 }
 
 func clean(tmpFile string) {
-
 	os.Remove(tmpFile)
 }

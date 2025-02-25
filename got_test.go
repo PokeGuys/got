@@ -9,13 +9,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/melbahja/got"
+	"github.com/pokeguys/got"
 )
 
 func NewHttptestServer() *httptest.Server {
-
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-
 		switch r.URL.String() {
 
 		case "/ok_file":
@@ -40,7 +38,6 @@ func NewHttptestServer() *httptest.Server {
 		case "/ok_file_with_range_delay":
 
 			if r.Method == http.MethodGet && strings.Contains(r.Header.Get("range"), "3-") {
-
 				time.Sleep(3 * time.Second)
 			}
 
@@ -72,7 +69,6 @@ func NewHttptestServer() *httptest.Server {
 var testUrl = httpt.URL + "/ok_file"
 
 func ExampleGot() {
-
 	// Just for testing
 	destPath := createTemp()
 	defer clean(destPath)
@@ -80,7 +76,6 @@ func ExampleGot() {
 	g := got.New()
 
 	err := g.Download(testUrl, destPath)
-
 	if err != nil {
 		log.Fatal(err)
 		return
@@ -92,7 +87,6 @@ func ExampleGot() {
 }
 
 func ExampleGot_withContext() {
-
 	// Just for testing
 	destPath := createTemp()
 	defer clean(destPath)
@@ -102,7 +96,6 @@ func ExampleGot_withContext() {
 	g := got.NewWithContext(ctx)
 
 	err := g.Download(testUrl, destPath)
-
 	if err != nil {
 		log.Fatal(err)
 		return
