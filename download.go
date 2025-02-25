@@ -15,6 +15,11 @@ import (
 	"time"
 )
 
+const (
+	DefaultMaxRetriesAttempts   = 3
+	DefaultDownloadChunkTimeout = 5000
+)
+
 type (
 
 	// Info holds downloadable file info.
@@ -35,6 +40,10 @@ type (
 		URL, Dir, Dest string
 
 		Interval, ChunkSize, MinChunkSize, MaxChunkSize uint64
+
+		MaxRetriesAttempts uint
+
+		DownloadChunkTimeout uint
 
 		Header []GotHeader
 
@@ -65,7 +74,6 @@ type (
 // If the server supports range requests, then we'll extract the length info from content-range,
 // Otherwise this just downloads the whole file in one go
 func (d *Download) GetInfoOrDownload() (*Info, error) {
-
 	var (
 		err  error
 		dest *os.File
@@ -94,7 +102,7 @@ func (d *Download) GetInfoOrDownload() (*Info, error) {
 	}
 	defer dest.Close()
 
-	if _, err = io.Copy(dest, io.TeeReader(res.Body, d)); err != nil {
+	if _, err = io.Copy(dest, res.Body); err != nil {
 		return &Info{}, err
 	}
 
@@ -104,7 +112,6 @@ func (d *Download) GetInfoOrDownload() (*Info, error) {
 		l := strings.Split(cr, "/")
 		if len(l) == 2 {
 			if length, err := strconv.ParseUint(l[1], 10, 64); err == nil {
-
 				return &Info{
 					Size:      length,
 					Rangeable: true,
@@ -121,7 +128,6 @@ func (d *Download) GetInfoOrDownload() (*Info, error) {
 // Init set defaults and split file into chunks and gets Info,
 // you should call Init before Start
 func (d *Download) Init() (err error) {
-
 	// Set start time.
 	d.startedAt = time.Now()
 
@@ -215,7 +221,6 @@ func (d *Download) Start() (err error) {
 
 // RunProgress runs ProgressFunc based on Interval and updates lastSize.
 func (d *Download) RunProgress(fn ProgressFunc) {
-
 	// Set default interval.
 	if d.Interval == 0 {
 		d.Interval = uint64(400 / runtime.NumCPU())
@@ -224,7 +229,6 @@ func (d *Download) RunProgress(fn ProgressFunc) {
 	sleepd := time.Duration(d.Interval) * time.Millisecond
 
 	for {
-
 		if d.StopProgress {
 			break
 		}
@@ -269,7 +273,6 @@ func (d *Download) Speed() uint64 {
 
 // AvgSpeed returns average download speed.
 func (d *Download) AvgSpeed() uint64 {
-
 	if totalMills := d.TotalCost().Milliseconds(); totalMills > 0 {
 		return uint64(atomic.LoadUint64(&d.size) / uint64(totalMills) * 1000)
 	}
@@ -283,9 +286,16 @@ func (d *Download) TotalCost() time.Duration {
 }
 
 // Write updates progress size.
-func (d *Download) Write(b []byte) (int, error) {
+type ProgressTrackingWriter struct {
+	download *Download
+	chunk    *Chunk
+}
+
+func (w *ProgressTrackingWriter) Write(b []byte) (int, error) {
 	n := len(b)
-	atomic.AddUint64(&d.size, uint64(n))
+	// Update both total progress and chunk position atomically
+	atomic.AddUint64(&w.download.size, uint64(n))
+	atomic.AddUint64(&w.chunk.Current, uint64(n))
 	return n, nil
 }
 
@@ -296,7 +306,6 @@ func (d *Download) IsRangeable() bool {
 
 // Download chunks
 func (d *Download) dl(dest io.WriterAt, errC chan error) {
-
 	var (
 		// Wait group.
 		wg sync.WaitGroup
@@ -305,16 +314,70 @@ func (d *Download) dl(dest io.WriterAt, errC chan error) {
 		max = make(chan int, d.Concurrency)
 	)
 
-	for i := 0; i < len(d.chunks); i++ {
-
+	for i := range d.chunks {
 		max <- 1
 		wg.Add(1)
 
 		go func(i int) {
 			defer wg.Done()
 
-			// Concurrently download and write chunk
-			if err := d.DownloadChunk(d.chunks[i], &OffsetWriter{dest, int64(d.chunks[i].Start)}); err != nil {
+			var err error
+			chunk := d.chunks[i] // Get the current chunk
+			for range int(d.MaxRetriesAttempts) {
+				ctx, cancel := context.WithCancel(d.ctx)
+				defer cancel()
+
+				// Create a new progress writer for this attempt
+				chunkWriter := &ProgressTrackingWriter{
+					download: d,
+					chunk:    chunk,
+				}
+
+				// Progress monitoring
+				progressCheck := make(chan struct{})
+				go func() {
+					ticker := time.NewTicker(time.Duration(d.DownloadChunkTimeout) * time.Millisecond)
+					defer ticker.Stop()
+
+					var lastPosition uint64
+					for {
+						select {
+						case <-ticker.C:
+							current := atomic.LoadUint64(&chunk.Current)
+							if current == lastPosition {
+								cancel() // No progress, trigger retry
+								return
+							}
+							lastPosition = current
+						case <-progressCheck:
+							return
+						case <-ctx.Done():
+							return
+						}
+					}
+				}()
+
+				// Download from current position
+				err = d.DownloadChunk(
+					ctx,
+					chunk,
+					&OffsetWriter{dest, int64(chunk.Start)},
+					chunkWriter,
+				)
+				close(progressCheck)
+
+				// Exit retry loop if successful
+				if err == nil {
+					break
+				}
+
+				// Only retry if error is due to cancellation (stuck)
+				if ctx.Err() == nil {
+					break
+				}
+			}
+
+			if err != nil {
 				errC <- err
 				return
 			}
@@ -329,7 +392,6 @@ func (d *Download) dl(dest io.WriterAt, errC chan error) {
 
 // Return constant path which will not change once the download starts
 func (d *Download) Path() string {
-
 	// Set the default path
 	if d.path == "" {
 
@@ -348,15 +410,20 @@ func (d *Download) Path() string {
 }
 
 // DownloadChunk downloads a file chunk.
-func (d *Download) DownloadChunk(c *Chunk, dest io.Writer) error {
-
+func (d *Download) DownloadChunk(ctx context.Context, c *Chunk, dest io.Writer, progressWriter io.Writer) error {
 	var (
 		err error
 		req *http.Request
 		res *http.Response
 	)
 
-	if req, err = NewRequest(d.ctx, "GET", d.URL, d.Header); err != nil {
+	// Calculate range based on current position
+	start := c.Start + c.Current
+	if start > c.End {
+		return nil // Already completed
+	}
+
+	if req, err = NewRequest(ctx, "GET", d.URL, d.Header); err != nil {
 		return err
 	}
 
@@ -366,18 +433,18 @@ func (d *Download) DownloadChunk(c *Chunk, dest io.Writer) error {
 	if res, err = d.Client.Do(req); err != nil {
 		return err
 	}
+	defer res.Body.Close()
 
-	// Verify the length
-	if res.ContentLength != int64(c.End-c.Start+1) {
+	// Verify we're getting the remaining bytes
+	expected := c.End - start + 1
+	if res.ContentLength != int64(expected) {
 		return fmt.Errorf(
-			"Range request returned invalid Content-Length: %d however the range was: %s",
-			res.ContentLength, contentRange,
+			"Range request returned invalid Content-Length: %d (expected %d), range: %s",
+			res.ContentLength, expected, contentRange,
 		)
 	}
 
-	defer res.Body.Close()
-
-	_, err = io.CopyN(dest, io.TeeReader(res.Body, d), res.ContentLength)
+	_, err = io.CopyN(dest, io.TeeReader(res.Body, progressWriter), res.ContentLength)
 
 	return err
 }
@@ -393,7 +460,6 @@ func NewDownload(ctx context.Context, URL, dest string) *Download {
 }
 
 func getDefaultConcurrency() uint {
-
 	c := uint(runtime.NumCPU() * 3)
 
 	// Set default max concurrency to 20.
@@ -410,7 +476,6 @@ func getDefaultConcurrency() uint {
 }
 
 func getDefaultChunkSize(totalSize, min, max, concurrency uint64) uint64 {
-
 	cs := totalSize / concurrency
 
 	// if chunk size >= 102400000 bytes set default to (ChunkSize / 2)

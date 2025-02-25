@@ -17,5 +17,7 @@ func (dst *OffsetWriter) Write(b []byte) (n int, err error) {
 
 // Chunk represents the partial content range
 type Chunk struct {
-	Start, End uint64
+	Start   uint64
+	End     uint64
+	Current uint64
 }

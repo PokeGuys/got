@@ -46,6 +46,16 @@ func main() {
 				Usage:   "Download `path`, if dir passed the path witll be `dir + output`.",
 				Aliases: []string{"o"},
 			},
+			&cli.UintFlag{
+				Name:    "retries",
+				Usage:   "Maximum number of retries for failed / timed-out chunks.",
+				Aliases: []string{"r"},
+			},
+			&cli.UintFlag{
+				Name:    "timeout",
+				Usage:   "Timeout for each chunk in `milliseconds`.",
+				Aliases: []string{"t"},
+			},
 			&cli.StringFlag{
 				Name:    "dir",
 				Usage:   "Save downloaded file to a `directory`.",
@@ -103,7 +113,8 @@ func run(ctx context.Context, c *cli.Context) error {
 	// Progress func.
 	g.ProgressFunc = func(d *got.Download) {
 		p.ChangeMax(int(d.TotalSize()))
-		p.Add(int(d.Size()))
+		p.Set(int(d.Size()))
+		p.Describe(fmt.Sprintf("Downloading %d/%d bytes, %d bytes/s", d.Size(), d.TotalSize(), d.AvgSpeed()))
 	}
 
 	info, err := os.Stdin.Stat()
@@ -194,14 +205,26 @@ func download(ctx context.Context, c *cli.Context, g *got.Got, url string) (err 
 		return err
 	}
 
+	retries := c.Uint("retries")
+	if retries == 0 {
+		retries = got.DefaultMaxRetriesAttempts
+	}
+
+	timeout := c.Uint("timeout")
+	if timeout == 0 {
+		timeout = got.DefaultDownloadChunkTimeout
+	}
+
 	return g.Do(&got.Download{
-		URL:         url,
-		Dir:         c.String("dir"),
-		Dest:        c.String("output"),
-		Header:      HeaderSlice,
-		Interval:    150,
-		ChunkSize:   c.Uint64("size"),
-		Concurrency: c.Uint("concurrency"),
+		URL:                  url,
+		Dir:                  c.String("dir"),
+		Dest:                 c.String("output"),
+		MaxRetriesAttempts:   retries,
+		DownloadChunkTimeout: timeout,
+		Header:               HeaderSlice,
+		Interval:             150,
+		ChunkSize:            c.Uint64("size"),
+		Concurrency:          c.Uint("concurrency"),
 	})
 }
 
