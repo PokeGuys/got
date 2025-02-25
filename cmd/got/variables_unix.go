@@ -5,8 +5,6 @@ package main
 
 import (
 	"fmt"
-
-	"gitlab.com/poldi1405/go-ansi"
 )
 
 var (
@@ -15,5 +13,5 @@ var (
 )
 
 func color(content ...interface{}) string {
-	return ansi.Blue(fmt.Sprint(content...))
+	return fmt.Sprintf("\x1b[34m%s\x1b[0m", fmt.Sprint(content...))
 }
